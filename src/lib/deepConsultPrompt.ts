@@ -17,6 +17,8 @@ export function buildDeepSystemPrompt(): string {
     '- 面试准备建议要可执行，比如"准备一个XX项目的STAR案例"、"了解公司的XX业务方向"',
     '- 不要重复解释匹配分数本身',
     '- 不要命理吉凶断言，传统文化语境仅作参考',
+    '',
+    '重要：interviewTips 必须返回3-5条具体的面试准备建议，不能为空！',
   ].join('\n');
 }
 

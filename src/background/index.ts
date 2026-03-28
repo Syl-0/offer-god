@@ -660,11 +660,22 @@ async function deepAdvice(job: JobContext, scores: MatchScoreResult): Promise<De
     const text = await callLlmRaw(llm, buildDeepSystemPrompt(), user, 1200);
     const obj = parseJsonObject(text);
     console.log('[JobGod] deepAdvice - LLM response OK');
+
+    // 解析各字段，为空时使用 fallback
+    const fallback = fallbackDeepAdvice(job);
+    const resumeTips = Array.isArray(obj.resumeTips) && obj.resumeTips.length > 0
+      ? obj.resumeTips.map(String)
+      : fallback.resumeTips;
+    const interviewTips = Array.isArray(obj.interviewTips) && obj.interviewTips.length > 0
+      ? obj.interviewTips.map(String)
+      : fallback.interviewTips;
+    const notes = Array.isArray(obj.notes) ? obj.notes.map(String) : [];
+
     const result: DeepAdviceResult = {
-      summary: String(obj.summary ?? ''),
-      resumeTips: Array.isArray(obj.resumeTips) ? obj.resumeTips.map(String) : [],
-      interviewTips: Array.isArray(obj.interviewTips) ? obj.interviewTips.map(String) : [],
-      notes: Array.isArray(obj.notes) ? obj.notes.map(String) : [],
+      summary: String(obj.summary ?? fallback.summary),
+      resumeTips,
+      interviewTips,
+      notes,
       rawText: text,
     };
     touchAdviceCache(cacheKey, { result, ts: Date.now() });
