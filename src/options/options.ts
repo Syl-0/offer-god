@@ -199,7 +199,7 @@ async function render(): Promise<void> {
         <label>模型</label>
         <div class="row" style="gap: 8px;">
           <select id="modelSelect" style="flex: 1;">${modelOptions}</select>
-          <input type="text" id="modelInput" value="${escapeAttr(llm.model)}" placeholder="自定义模型名（可覆盖）" style="flex: 1;" />
+          <input type="text" id="modelInput" value="" placeholder="自定义模型名（可覆盖）" style="flex: 1;" />
         </div>
         <p class="note">选择预设模型或在输入框中填写自定义模型名</p>
 
