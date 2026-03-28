@@ -507,46 +507,74 @@ async function getMatchAnalysis(job: JobContext): Promise<{ result: MatchAnalysi
 // ==================== 消息处理 ====================
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  const handlers: Record<string, () => Promise<unknown>> = {
-    COMPUTE_MATCH: () => computeMatch(msg.payload as JobContext),
-    GET_DEEP_ADVICE: () => deepAdvice(msg.payload.job as JobContext, msg.payload.scores as MatchScoreResult),
-    REBUILD_INSIGHTS: () => rebuildUserInsights(),
-    GET_MATCH_ANALYSIS: () => getMatchAnalysis(msg.payload.job as JobContext),
-    GET_PERSISTENT_CACHE: async () => {
-      const { companyName, jobTitle } = msg.payload || {};
-      if (!companyName || !jobTitle) throw new Error('缺少参数');
-      return getPersistentCacheEntry(companyName, jobTitle);
-    },
-    EXPORT_CACHE: () => exportPersistentCache(),
-    IMPORT_CACHE: async () => importPersistentCache(msg.payload?.json || ''),
-    CLEAR_CACHE: async () => { clearAllCaches(); await clearPersistentCache(); return { ok: true }; },
-    TEST_LLM: async () => {
-      const text = await callLlm(msg.payload as LlmConfig, '你是一个测试助手。', '请回复"连接成功"。', { maxTokens: 20 });
-      return { ok: true, response: text };
-    },
-    TEST_COMPANY_SEARCH: async () => {
-      const result = await searchCompanyInfo('腾讯', msg.payload as LlmConfig);
-      if (result && result.confidence > 0.5) {
-        return { ok: true, supported: true, companyName: result.companyName, description: result.description.slice(0, 100) };
-      }
-      return { ok: true, supported: false, reason: '模型无法返回有效的公司信息' };
-    },
-  };
+  console.log('[JobGod] Received message:', msg?.type);
 
+  // 处理 PING
   if (msg?.type === 'PING') {
     sendResponse({ ok: true });
     return false;
   }
 
-  const handler = handlers[msg?.type as string];
-  if (!handler) {
-    sendResponse({ ok: false, error: 'Unknown message type' });
-    return false;
-  }
+  // 异步处理函数
+  const handleAsync = async () => {
+    try {
+      switch (msg?.type) {
+        case 'COMPUTE_MATCH': {
+          const result = await computeMatch(msg.payload as JobContext);
+          return { ok: true, result };
+        }
+        case 'GET_DEEP_ADVICE': {
+          const result = await deepAdvice(msg.payload.job as JobContext, msg.payload.scores as MatchScoreResult);
+          return { ok: true, result };
+        }
+        case 'REBUILD_INSIGHTS': {
+          return await rebuildUserInsights();
+        }
+        case 'GET_MATCH_ANALYSIS': {
+          const { result, fromCache } = await getMatchAnalysis(msg.payload.job as JobContext);
+          return { ok: true, result, fromCache };
+        }
+        case 'GET_PERSISTENT_CACHE': {
+          const { companyName, jobTitle } = msg.payload || {};
+          if (!companyName || !jobTitle) {
+            return { ok: false, error: '缺少参数' };
+          }
+          const entry = await getPersistentCacheEntry(companyName, jobTitle);
+          return { ok: true, entry };
+        }
+        case 'EXPORT_CACHE': {
+          const data = await exportPersistentCache();
+          return { ok: true, data };
+        }
+        case 'IMPORT_CACHE': {
+          const result = await importPersistentCache(msg.payload?.json || '');
+          return result;
+        }
+        case 'CLEAR_CACHE': {
+          clearAllCaches();
+          await clearPersistentCache();
+          return { ok: true };
+        }
+        case 'TEST_LLM': {
+          const text = await callLlm(msg.payload as LlmConfig, '你是一个测试助手。', '请回复"连接成功"。', { maxTokens: 20 });
+          return { ok: true, response: text };
+        }
+        case 'TEST_COMPANY_SEARCH': {
+          const result = await searchCompanyInfo('腾讯', msg.payload as LlmConfig);
+          if (result && result.confidence > 0.5) {
+            return { ok: true, supported: true, companyName: result.companyName, description: result.description.slice(0, 100) };
+          }
+          return { ok: true, supported: false, reason: '模型无法返回有效的公司信息' };
+        }
+        default:
+          return { ok: false, error: 'Unknown message type' };
+      }
+    } catch (e) {
+      console.error(`[JobGod] ${msg?.type} error:`, e);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  };
 
-  handler()
-    .then(result => sendResponse(result))
-    .catch(e => sendResponse({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-
+  handleAsync().then(sendResponse);
   return true;
 });
