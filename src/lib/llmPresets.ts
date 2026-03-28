@@ -31,7 +31,7 @@ export const LLM_PRESETS: LlmPreset[] = [
     id: 'zhipu',
     name: '智谱 GLM',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    models: ['glm-4-flash', 'glm-4', 'glm-4-plus', 'glm-4-air'],
+    models: ['glm-4', 'glm-4-plus', 'glm-4-air'],
     requiresApiKey: true,
   },
   {

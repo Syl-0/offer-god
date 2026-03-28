@@ -199,8 +199,9 @@ async function render(): Promise<void> {
         <label>模型</label>
         <div class="row" style="gap: 8px;">
           <select id="modelSelect" style="flex: 1;">${modelOptions}</select>
-          <input type="text" id="modelInput" value="${escapeAttr(llm.model)}" placeholder="自定义模型名" style="flex: 1; display: ${currentPreset.id === 'custom' ? 'block' : 'none'};" />
+          <input type="text" id="modelInput" value="${escapeAttr(llm.model)}" placeholder="自定义模型名（可覆盖）" style="flex: 1;" />
         </div>
+        <p class="note">选择预设模型或在输入框中填写自定义模型名</p>
 
         <p class="note">密钥仅存于本机浏览器存储；若留空，将使用本地规则生成画像。</p>
 
@@ -258,11 +259,11 @@ function setupEventListeners(): void {
       if (preset.models.length > 0) {
         modelSelect.innerHTML = preset.models.map(m => `<option value="${m}">${m}</option>`).join('');
         modelSelect.style.display = 'block';
-        modelInput.style.display = 'none';
       } else {
         modelSelect.style.display = 'none';
-        modelInput.style.display = 'block';
       }
+      // 自定义输入框始终显示
+      modelInput.style.display = 'block';
     }
   });
 
@@ -296,14 +297,8 @@ function setupEventListeners(): void {
     const disclaimerAccepted = (document.getElementById('disclaimer') as HTMLInputElement).checked;
     const disabledOnSite = (document.getElementById('disabled') as HTMLInputElement).checked;
 
-    // 获取模型名
-    const preset = LLM_PRESETS.find(p => p.id === presetSelect.value);
-    let modelName = '';
-    if (preset?.id === 'custom' || preset?.models.length === 0) {
-      modelName = modelInput.value.trim();
-    } else {
-      modelName = modelSelect.value;
-    }
+    // 获取模型名（优先使用自定义输入）
+    const modelName = modelInput.value.trim() || modelSelect.value;
 
     const birthNext = {
       year: Number((document.getElementById('y') as HTMLInputElement).value),
@@ -380,14 +375,8 @@ function setupEventListeners(): void {
     const baseUrl = baseUrlInput.value.trim();
     const apiKey = (document.getElementById('apiKey') as HTMLInputElement).value.trim();
 
-    // 获取模型名
-    const preset = LLM_PRESETS.find(p => p.id === presetSelect.value);
-    let model = '';
-    if (preset?.id === 'custom' || preset?.models.length === 0) {
-      model = modelInput.value.trim();
-    } else {
-      model = modelSelect.value;
-    }
+    // 获取模型名（优先使用自定义输入）
+    const model = modelInput.value.trim() || modelSelect.value;
 
     if (!baseUrl || !apiKey || !model) {
       status.textContent = '请填写完整的 Base URL、API Key 和 Model。';
@@ -423,13 +412,7 @@ function setupEventListeners(): void {
     const baseUrl = baseUrlInput.value.trim();
     const apiKey = (document.getElementById('apiKey') as HTMLInputElement).value.trim();
 
-    const preset = LLM_PRESETS.find(p => p.id === presetSelect.value);
-    let model = '';
-    if (preset?.id === 'custom' || preset?.models.length === 0) {
-      model = modelInput.value.trim();
-    } else {
-      model = modelSelect.value;
-    }
+    const model = modelInput.value.trim() || modelSelect.value;
 
     if (!baseUrl || !apiKey || !model) {
       status.textContent = '请先填写完整的 LLM 配置并测试连接。';
