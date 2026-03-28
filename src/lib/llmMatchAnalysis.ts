@@ -1,6 +1,11 @@
+/**
+ * LLM 匹配分析模块 - 使用 LLM 进行深度匹配分析
+ */
+
 import type { BaziSummaryForPrompt } from './baziProfile';
 import type { JobContext, UserInsights, MatchAnalysisResult, LlmConfig } from '../types/analysis';
-import { searchCompanyInfo, type CompanySearchResult } from './companySearch';
+import { searchCompanyInfo } from './companySearch';
+import { callLlmForJson } from './llmUtils';
 
 export interface LlmMatchAnalysisResult extends MatchAnalysisResult {
   scienceScore: number;
@@ -14,11 +19,35 @@ export interface LlmMatchAnalysisPayload {
   llm: LlmConfig;
 }
 
+interface JobRequirementsResponse {
+  hardRequirements?: string[];
+  softRequirements?: string[];
+  niceToHave?: string[];
+  dealBreakers?: string[];
+}
+
+interface MatchAnalysisResponse {
+  scienceScore?: number;
+  metaphysicsScore?: number;
+  scienceAnalysis?: {
+    matchedSkills?: string[];
+    gaps?: string[];
+    summary?: string;
+  };
+  metaphysicsAnalysis?: {
+    dayMaster?: string;
+    jobWuxing?: string[];
+    wuxingRelation?: string;
+    dayunInfluence?: string;
+    summary?: string;
+  };
+}
+
 interface JobRequirements {
-  hardRequirements: string[];   // 硬性要求（必须满足）
-  softRequirements: string[];   // 软性要求（加分项）
-  niceToHave: string[];         // 加分项
-  dealBreakers: string[];       // 一票否决项
+  hardRequirements: string[];
+  softRequirements: string[];
+  niceToHave: string[];
+  dealBreakers: string[];
 }
 
 /**
@@ -87,18 +116,24 @@ async function analyzeJobRequirements(job: JobContext, llm: LlmConfig): Promise<
 注意：
 - 不要把JD里的废话如"熟悉、了解、具备"当作要求
 - 要理解岗位的核心职责，提取真正重要的要求
-- AI产品经理岗位的核心是"产品经理经验"+"AI相关经验"，不要把"熟悉"当成硬性要求`;
+- 只输出 JSON 对象，不要有其他文字`;
 
   const userPrompt = `请分析以下岗位的要求：\n\n${jdInfo}`;
 
-  const response = await callLlm(llm, systemPrompt, userPrompt, 800);
-  const parsed = parseJsonObject(response);
+  const result = await callLlmForJson<JobRequirementsResponse>(llm, systemPrompt, userPrompt, {
+    maxTokens: 800,
+    retries: 1,
+  });
+
+  if (!result) {
+    return { hardRequirements: [], softRequirements: [], niceToHave: [], dealBreakers: [] };
+  }
 
   return {
-    hardRequirements: Array.isArray(parsed.hardRequirements) ? parsed.hardRequirements.map(String).slice(0, 10) : [],
-    softRequirements: Array.isArray(parsed.softRequirements) ? parsed.softRequirements.map(String).slice(0, 8) : [],
-    niceToHave: Array.isArray(parsed.niceToHave) ? parsed.niceToHave.map(String).slice(0, 5) : [],
-    dealBreakers: Array.isArray(parsed.dealBreakers) ? parsed.dealBreakers.map(String).slice(0, 5) : [],
+    hardRequirements: Array.isArray(result.hardRequirements) ? result.hardRequirements.map(String).slice(0, 10) : [],
+    softRequirements: Array.isArray(result.softRequirements) ? result.softRequirements.map(String).slice(0, 8) : [],
+    niceToHave: Array.isArray(result.niceToHave) ? result.niceToHave.map(String).slice(0, 5) : [],
+    dealBreakers: Array.isArray(result.dealBreakers) ? result.dealBreakers.map(String).slice(0, 5) : [],
   };
 }
 
@@ -197,43 +232,46 @@ ${baziInfo}
 
 请给出匹配度分析：`;
 
-  const response = await callLlm(llm, systemPrompt, userPrompt, 1200);
-  const parsed = parseJsonObject(response);
+  const result = await callLlmForJson<MatchAnalysisResponse>(llm, systemPrompt, userPrompt, {
+    maxTokens: 1200,
+    retries: 1,
+  });
 
-  const scienceScore = Math.min(100, Math.max(0, Number(parsed.scienceScore) || 50));
-  const metaphysicsScore = Math.min(100, Math.max(0, Number(parsed.metaphysicsScore) || 50));
+  // 提供默认值
+  const scienceScore = result?.scienceScore ?? 50;
+  const metaphysicsScore = result?.metaphysicsScore ?? 50;
 
   return {
-    scienceScore,
-    metaphysicsScore,
+    scienceScore: Math.min(100, Math.max(0, scienceScore)),
+    metaphysicsScore: Math.min(100, Math.max(0, metaphysicsScore)),
     scienceAnalysis: {
       score: scienceScore,
-      matchedKeywords: Array.isArray(parsed.scienceAnalysis?.matchedSkills)
-        ? parsed.scienceAnalysis.matchedSkills.map(String).slice(0, 8)
+      matchedKeywords: Array.isArray(result?.scienceAnalysis?.matchedSkills)
+        ? result.scienceAnalysis.matchedSkills.map(String).slice(0, 8)
         : [],
-      missingKeywords: Array.isArray(parsed.scienceAnalysis?.gaps)
-        ? parsed.scienceAnalysis.gaps.map(String).slice(0, 5)
+      missingKeywords: Array.isArray(result?.scienceAnalysis?.gaps)
+        ? result.scienceAnalysis.gaps.map(String).slice(0, 5)
         : [],
       jobRequirements: [...requirements.hardRequirements, ...requirements.softRequirements].slice(0, 10),
-      yourStrengths: Array.isArray(parsed.scienceAnalysis?.matchedSkills)
-        ? parsed.scienceAnalysis.matchedSkills.map(String).slice(0, 5)
+      yourStrengths: Array.isArray(result?.scienceAnalysis?.matchedSkills)
+        ? result.scienceAnalysis.matchedSkills.map(String).slice(0, 5)
         : [],
-      gaps: Array.isArray(parsed.scienceAnalysis?.gaps)
-        ? parsed.scienceAnalysis.gaps.map(String).slice(0, 5)
+      gaps: Array.isArray(result?.scienceAnalysis?.gaps)
+        ? result.scienceAnalysis.gaps.map(String).slice(0, 5)
         : [],
-      summary: String(parsed.scienceAnalysis?.summary || '').slice(0, 500),
+      summary: String(result?.scienceAnalysis?.summary || '基于简历与岗位要求的匹配分析').slice(0, 500),
     },
     metaphysicsAnalysis: {
       score: metaphysicsScore,
-      dayMaster: String(parsed.metaphysicsAnalysis?.dayMaster || bazi?.dayMaster || '未知'),
+      dayMaster: String(result?.metaphysicsAnalysis?.dayMaster || bazi?.dayMaster || '未知'),
       dominantWuxing: '',
-      jobWuxingTags: Array.isArray(parsed.metaphysicsAnalysis?.jobWuxing)
-        ? parsed.metaphysicsAnalysis.jobWuxing.map(String)
+      jobWuxingTags: Array.isArray(result?.metaphysicsAnalysis?.jobWuxing)
+        ? result.metaphysicsAnalysis.jobWuxing.map(String)
         : [],
-      wuxingMatch: String(parsed.metaphysicsAnalysis?.wuxingRelation || ''),
-      dayunInfluence: String(parsed.metaphysicsAnalysis?.dayunInfluence || ''),
+      wuxingMatch: String(result?.metaphysicsAnalysis?.wuxingRelation || ''),
+      dayunInfluence: String(result?.metaphysicsAnalysis?.dayunInfluence || ''),
       liuYearInfluence: '',
-      summary: String(parsed.metaphysicsAnalysis?.summary || '').slice(0, 500),
+      summary: String(result?.metaphysicsAnalysis?.summary || '玄学维度参考分析').slice(0, 500),
     },
   };
 }
@@ -251,52 +289,4 @@ export async function callLlmForMatchAnalysis(payload: LlmMatchAnalysisPayload):
   const result = await evaluateUserJobMatch(job, requirements, userInsights, bazi, llm);
 
   return result;
-}
-
-async function callLlm(llm: LlmConfig, system: string, user: string, maxTokens = 900): Promise<string> {
-  let baseUrl = llm.baseUrl.replace(/\/$/, '');
-  if (!baseUrl.includes('/v') && !baseUrl.includes('openai.com')) {
-    if (baseUrl.includes('bigmodel.cn')) {
-      baseUrl = baseUrl + '/api/paas/v4';
-    } else {
-      baseUrl = baseUrl + '/v1';
-    }
-  }
-
-  const url = `${baseUrl}/chat/completions`;
-  const body = {
-    model: llm.model,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
-    temperature: 0.3,
-    max_tokens: maxTokens,
-  };
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${llm.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`LLM_HTTP_${res.status}:${t.slice(0, 200)}`);
-  }
-
-  const json = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  return json.choices?.[0]?.message?.content ?? '';
-}
-
-function parseJsonObject(text: string): Record<string, unknown> {
-  const trimmed = text.trim();
-  const block = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = block ? block[1]!.trim() : trimmed;
-  return JSON.parse(raw) as Record<string, unknown>;
 }

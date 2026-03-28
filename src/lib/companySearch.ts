@@ -4,6 +4,7 @@
  */
 
 import type { LlmConfig } from '../types/analysis';
+import { callLlmForJson } from './llmUtils';
 
 export interface CompanySearchResult {
   companyName: string;
@@ -55,120 +56,65 @@ export async function searchCompanyInfo(companyName: string, llm: LlmConfig): Pr
   }
 }
 
+interface CompanyInfoResponse {
+  companyName?: string;
+  description?: string;
+  mainBusiness?: string[];
+  industry?: string;
+  scale?: string;
+  funding?: string;
+  confidence?: number;
+}
+
 /**
  * 通过 LLM 查询公司信息
  */
 async function queryCompanyInfoFromLLM(companyName: string, llm: LlmConfig): Promise<CompanySearchResult | null> {
-  // 保存参数值，避免压缩器 catch 块变量遮蔽
-  const companyNameFallback = companyName;
-
   const systemPrompt = `你是一个企业信息查询助手。请根据公司名称，提供该公司的基本信息。
 
-如果你确定知道这家公司，请输出一个 JSON 对象：
+如果你知道这家公司，请输出一个 JSON 对象：
 {
   "companyName": "公司全称",
   "description": "公司简介（50-100字）",
   "mainBusiness": ["主营业务1", "主营业务2"],
   "industry": "所属行业",
-  "scale": "公司规模（如已知）",
-  "funding": "融资情况（如已知）",
   "confidence": 0.9
 }
 
 如果你不确定或不了解这家公司，请输出：
 {
-  "companyName": "${companyNameFallback}",
+  "companyName": "${companyName}",
   "confidence": 0.3
 }
 
 注意：
 - confidence 表示你对该信息的确定程度（0-1）
-- 如果有多家同名公司，请选择最知名或最可能的一家，并说明
-- 不要编造信息，不确定的内容可以留空`;
+- 不要编造信息，不确定的内容可以留空
+- 只输出 JSON 对象，不要有其他文字`;
 
-  const userPrompt = `请查询"${companyNameFallback}"这家公司的信息：`;
+  const userPrompt = `请查询"${companyName}"这家公司的信息：`;
 
-  let parsed: Record<string, unknown> | null = null;
-  let llmSuccess = false;
+  const result = await callLlmForJson<CompanyInfoResponse>(llm, systemPrompt, userPrompt, {
+    maxTokens: 500,
+    temperature: 0.1,
+    retries: 1,
+  });
 
-  try {
-    const response = await callLlm(llm, systemPrompt, userPrompt, 500);
-    parsed = parseJsonObject(response);
-    llmSuccess = true;
-  } catch (err) {
-    console.error('[JobGod] queryCompanyInfoFromLLM - error:', err);
-    llmSuccess = false;
-  }
-
-  if (!llmSuccess || !parsed) {
+  if (!result) {
     return null;
   }
 
-  const confidence = Number(parsed.confidence) || 0;
+  const confidence = Number(result.confidence) || 0;
 
   return {
-    companyName: String(parsed.companyName || companyNameFallback),
-    description: String(parsed.description || ''),
-    mainBusiness: Array.isArray(parsed.mainBusiness) ? parsed.mainBusiness.map(String) : [],
-    industry: String(parsed.industry || ''),
-    scale: parsed.scale ? String(parsed.scale) : undefined,
-    funding: parsed.funding ? String(parsed.funding) : undefined,
+    companyName: String(result.companyName || companyName),
+    description: String(result.description || ''),
+    mainBusiness: Array.isArray(result.mainBusiness) ? result.mainBusiness.map(String) : [],
+    industry: String(result.industry || ''),
+    scale: result.scale ? String(result.scale) : undefined,
+    funding: result.funding ? String(result.funding) : undefined,
     confidence,
   };
-}
-
-/**
- * 调用 LLM API
- */
-async function callLlm(llm: LlmConfig, system: string, user: string, maxTokens = 500): Promise<string> {
-  let baseUrl = llm.baseUrl.replace(/\/$/, '');
-  if (!baseUrl.includes('/v') && !baseUrl.includes('openai.com')) {
-    if (baseUrl.includes('bigmodel.cn')) {
-      baseUrl = baseUrl + '/api/paas/v4';
-    } else {
-      baseUrl = baseUrl + '/v1';
-    }
-  }
-
-  const url = `${baseUrl}/chat/completions`;
-  const body = {
-    model: llm.model,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
-    temperature: 0.1, // 低温度，更确定性的回答
-    max_tokens: maxTokens,
-  };
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${llm.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`LLM_HTTP_${res.status}:${t.slice(0, 200)}`);
-  }
-
-  const json = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  return json.choices?.[0]?.message?.content ?? '';
-}
-
-/**
- * 解析 JSON 响应
- */
-function parseJsonObject(text: string): Record<string, unknown> {
-  const trimmed = text.trim();
-  const block = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = block ? block[1]!.trim() : trimmed;
-  return JSON.parse(raw) as Record<string, unknown>;
 }
 
 /**
