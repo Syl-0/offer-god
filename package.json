@@ -1,0 +1,27 @@
+{
+  "name": "offer-lai-le",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build && cp node_modules/pdfjs-dist/build/pdf.worker.mjs dist/pdf.worker.mjs && rm -rf dist/node_modules",
+    "test": "vitest run",
+    "check": "tsc --noEmit"
+  },
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/chrome": "^0.1.38",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3",
+    "vite-plugin-static-copy": "^4.0.0",
+    "vitest": "^4.1.2"
+  },
+  "dependencies": {
+    "mystilight-8char": "^1.0.0",
+    "pdfjs-dist": "^5.5.207"
+  }
+}

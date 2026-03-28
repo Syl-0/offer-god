@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Offer 来了",
+  "version": "1.0.0",
+  "description": "在 BOSS 直聘上基于简历与八字（大运流年）提供可解释的匹配参考与求职建议（含科学维度与文化参考）。",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://www.zhipin.com/*", "<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Offer 来了",
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.zhipin.com/*"],
+      "js": ["content/zhipin.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["pdf.worker.mjs", "assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
