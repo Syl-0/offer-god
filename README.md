@@ -118,7 +118,7 @@ npm run build
 
 在设置页面可以单独控制每个平台的显示：
 - 勾选：在该平台显示分析按钮
-- 取消勾选：在该平台隐藏分析按钮
+- 取担勾选：在该平台隐藏分析按钮
 - 更改后即时生效，无需点击保存
 
 ## 🔒 隐私声明
@@ -155,3 +155,11 @@ npm run build
 4. 更新 `manifest.json` 的 `matches` 和 `host_permissions`
 
 详细步骤请参考现有的 `zhipin.ts` 适配器实现。
+
+---
+
+## ☕ 打赏支持
+
+如果这个项目对你有帮助，欢迎请我喝杯咖啡 ☕
+
+<img src="payment-QR-code.jpg" width="200" />
