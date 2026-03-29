@@ -10,13 +10,13 @@ export default defineConfig({
     rollupOptions: {
       input: {
         background: resolve(__dirname, 'src/background/index.ts'),
-        'content/zhipin': resolve(__dirname, 'src/content/zhipin.ts'),
+        'content/job-pages': resolve(__dirname, 'src/content/job-pages.ts'),
         options: resolve(__dirname, 'options.html'),
         popup: resolve(__dirname, 'popup.html'),
       },
       output: {
         entryFileNames: (chunkInfo) => {
-          if (chunkInfo.name === 'content/zhipin') return 'content/zhipin.js';
+          if (chunkInfo.name === 'content/job-pages') return 'content/job-pages.js';
           if (chunkInfo.name === 'background') return 'background.js';
           return 'assets/[name]-[hash].js';
         },
