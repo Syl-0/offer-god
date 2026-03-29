@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Offer 来了",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "在招聘网站（BOSS直聘、实习僧、猎聘、前程无忧、智联招聘）上基于简历与八字提供匹配参考与求职建议。",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [

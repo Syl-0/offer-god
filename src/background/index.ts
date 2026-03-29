@@ -187,7 +187,7 @@ async function clearPersistentCache(): Promise<void> {
 
 async function loadUserProfile(): Promise<UserProfile | null> {
   const data = await chrome.storage.local.get([
-    'resumeText', 'resumeHash', 'birth', 'weights', 'llm', 'disabledOnSite', 'disclaimerAccepted',
+    'resumeText', 'resumeHash', 'birth', 'weights', 'llm', 'disabledPlatforms', 'disclaimerAccepted',
   ]);
 
   if (!data.disclaimerAccepted) {
@@ -208,7 +208,7 @@ async function loadUserProfile(): Promise<UserProfile | null> {
       metaphysics: Number(weights?.metaphysics ?? 0.5),
     },
     llm: hasLlm ? { baseUrl: rawLlm.baseUrl!, apiKey: rawLlm.apiKey!, model: rawLlm.model! } : null,
-    disabledOnSite: Boolean(data.disabledOnSite),
+    disabledPlatforms: (data.disabledPlatforms as string[]) ?? [],
     disclaimerAccepted: true,
   };
 }
@@ -347,7 +347,6 @@ export async function rebuildUserInsights(): Promise<{ ok: boolean; source?: str
 async function computeMatch(job: JobContext): Promise<MatchScoreResult> {
   const profile = await loadUserProfile();
   if (!profile || profile.resumeText.length < 20) throw new Error('PROFILE_INCOMPLETE');
-  if (profile.disabledOnSite) throw new Error('DISABLED');
 
   const insights = await loadUserInsights();
   const key = matchCacheKey(profile, job, insights);
@@ -389,7 +388,6 @@ interface DeepAdviceResponse {
 async function deepAdvice(job: JobContext, scores: MatchScoreResult): Promise<DeepAdviceResult> {
   const profile = await loadUserProfile();
   if (!profile || profile.resumeText.length < 20) throw new Error('PROFILE_INCOMPLETE');
-  if (profile.disabledOnSite) throw new Error('DISABLED');
 
   // 检查缓存
   const persistentEntry = await getPersistentCacheEntry(job.companyName, job.jobTitle);

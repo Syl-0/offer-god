@@ -222,3 +222,55 @@ button.secondary:hover {
   color: #1e40af;
   border: 1px solid #3b82f6;
 }
+
+/* 平台开关样式 */
+.platform-switches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.platform-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.platform-switch:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.platform-switch input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #4f46e5;
+}
+
+.platform-switch .platform-name {
+  font-weight: 500;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.platform-switch .platform-domain {
+  color: #6b7280;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.platform-switch:has(input:not(:checked)) {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.platform-switch:has(input:not(:checked)) .platform-name {
+  color: #991b1b;
+}

@@ -119,6 +119,7 @@ export interface UserProfile {
   } | null;
   weights: { science: number; metaphysics: number };
   llm: LlmConfig | null;
-  disabledOnSite: boolean;
+  /** 已禁用的平台 ID 列表 */
+  disabledPlatforms: string[];
   disclaimerAccepted: boolean;
 }

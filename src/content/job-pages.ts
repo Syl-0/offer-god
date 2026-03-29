@@ -3,10 +3,65 @@
  * 支持多个招聘网站的职位分析和匹配建议
  */
 
+/**
+ * 通用招聘平台 Content Script
+ * 支持多个招聘网站的职位分析和匹配建议
+ */
+
 import styles from './zhipin.css?inline';
-import { detectPlatform } from '../selectors';
+// 直接导入所有适配器，避免通过 selectors 中转
+import { zhipinAdapter } from '../selectors/zhipin';
+import { shixisengAdapter } from '../selectors/shixiseng';
+import { liepinAdapter } from '../selectors/liepin';
+import { job51Adapter } from '../selectors/job51';
+import { zhaopinAdapter } from '../selectors/zhaopin';
 import type { PlatformAdapter } from '../selectors/types';
 import type { JobContext, MatchScoreResult, DeepAdviceResult, MatchAnalysisResult } from '../types/analysis';
+
+// ==================== 平台检测（内联，避免跨模块导入） ====================
+
+const PLATFORM_IDS = {
+  ZHIPIN: 'zhipin',
+  SHIXISENG: 'shixiseng',
+  LIEPIN: 'liepin',
+  JOB51: 'job51',
+  ZHAOPIN: 'zhaopin',
+} as const;
+
+type PlatformId = typeof PLATFORM_IDS[keyof typeof PLATFORM_IDS];
+
+const adapters: PlatformAdapter[] = [
+  zhipinAdapter,
+  shixisengAdapter,
+  liepinAdapter,
+  job51Adapter,
+  zhaopinAdapter,
+];
+
+function detectPlatform(): PlatformAdapter | null {
+  const host = location.hostname;
+  for (const adapter of adapters) {
+    if (adapter.hostPattern.test(host)) {
+      console.log(`[JobGod] Detected platform: ${adapter.name}`);
+      return adapter;
+    }
+  }
+  console.log('[JobGod] No matching platform detected for:', host);
+  return null;
+}
+
+function getPlatformId(adapter: PlatformAdapter): PlatformId | null {
+  const nameToId: Record<string, PlatformId> = {
+    'BOSS直聘': PLATFORM_IDS.ZHIPIN,
+    '实习僧': PLATFORM_IDS.SHIXISENG,
+    '猎聘': PLATFORM_IDS.LIEPIN,
+    '前程无忧': PLATFORM_IDS.JOB51,
+    '智联招聘': PLATFORM_IDS.ZHAOPIN,
+  };
+  return nameToId[adapter.name] ?? null;
+}
+
+// ==================== 全局样式 ====================
 
 const MARK_LIST = 'data-jg-list';
 const MARK_DETAIL = 'data-jg-detail';
@@ -314,10 +369,16 @@ function mountListCard(adapter: PlatformAdapter, anchor: HTMLAnchorElement): voi
   if (anchor.getAttribute(MARK_LIST) === '1') return;
   anchor.setAttribute(MARK_LIST, '1');
 
+  const card = adapter.resolveCardRoot(anchor);
+
+  // 检查卡片是否已经有我们的 UI（防止重复）
+  if (card.querySelector('.jg-dual-row')) {
+    return;
+  }
+
   const getJob = (): JobContext => adapter.extractFromCard(anchor);
   const { root, setScoresFromAnalysis, getDeepButton, getAnalysisButton, showDeepLoading, hideDeepLoading, showAnalysisLoading, hideAnalysisLoading } = createDualRow();
 
-  const card = adapter.resolveCardRoot(anchor);
   const cardStyle = window.getComputedStyle(card);
   if (cardStyle.position === 'static') {
     card.style.position = 'relative';
@@ -329,6 +390,7 @@ function mountListCard(adapter: PlatformAdapter, anchor: HTMLAnchorElement): voi
     await loadUserWeights();
     try {
       const j = getJob();
+      // 只检查持久化缓存，不自动调用 API
       const cachedResult = await chrome.runtime.sendMessage({
         type: 'GET_PERSISTENT_CACHE',
         payload: { companyName: j.companyName, jobTitle: j.jobTitle },
@@ -336,12 +398,8 @@ function mountListCard(adapter: PlatformAdapter, anchor: HTMLAnchorElement): voi
       if (cachedResult?.ok && cachedResult.entry) {
         const entry = cachedResult.entry;
         setScoresFromAnalysis(entry.scienceScore, entry.metaphysicsScore);
-      } else {
-        const { analysis, fromCache } = await fetchAnalysis(j);
-        if (fromCache) {
-          setScoresFromAnalysis(analysis.scienceAnalysis.score, analysis.metaphysicsAnalysis.score);
-        }
       }
+      // 不再自动调用 fetchAnalysis，用户必须点击按钮才能触发分析
     } catch {
       // 静默失败
     }
@@ -362,8 +420,16 @@ function scanList(adapter: PlatformAdapter): void {
 
 function mountDetailBlock(adapter: PlatformAdapter): void {
   if (document.documentElement.getAttribute(MARK_DETAIL) === '1') return;
+
   const host = adapter.findDetailMountHost();
   if (!host) return;
+
+  // 检查是否已经有我们的 UI（防止重复）
+  if (host.nextElementSibling?.classList.contains('jg-dual-row')) {
+    document.documentElement.setAttribute(MARK_DETAIL, '1');
+    return;
+  }
+
   document.documentElement.setAttribute(MARK_DETAIL, '1');
 
   const { root, setScoresFromAnalysis, getDeepButton, getAnalysisButton, showDeepLoading, hideDeepLoading, showAnalysisLoading, hideAnalysisLoading } = createDualRow();
@@ -371,12 +437,18 @@ function mountDetailBlock(adapter: PlatformAdapter): void {
 
   const getJob = (): JobContext => adapter.extractFromDetail();
 
+  // 不自动调用分析，用户必须点击按钮才触发
+  // 只检查缓存，如果有缓存数据则显示分数
   void (async () => {
     try {
       const j = getJob();
-      const { analysis, fromCache } = await fetchAnalysis(j);
-      if (fromCache) {
-        setScoresFromAnalysis(analysis.scienceAnalysis.score, analysis.metaphysicsAnalysis.score);
+      const cachedResult = await chrome.runtime.sendMessage({
+        type: 'GET_PERSISTENT_CACHE',
+        payload: { companyName: j.companyName, jobTitle: j.jobTitle },
+      });
+      if (cachedResult?.ok && cachedResult.entry) {
+        const entry = cachedResult.entry;
+        setScoresFromAnalysis(entry.scienceScore, entry.metaphysicsScore);
       }
     } catch {
       // 静默失败
@@ -396,61 +468,60 @@ const listObs = new MutationObserver(() => {
 
     if (adapter.isDetailPage()) {
       mountDetailBlock(adapter);
-    } else {
+    } else if (adapter.name === 'BOSS直聘') {
+      // 列表页只支持 BOSS 直聘
       scanList(adapter);
     }
   });
 });
 
-function start(): void {
-  console.log('[JobGod] Starting content script...');
+// ==================== 初始化 ====================
+
+chrome.storage.local.get(['disabledPlatforms', 'disclaimerAccepted', 'resumeText'], (r) => {
+  const disabledPlatforms = r.disabledPlatforms as string[] | undefined;
+  console.log('[JobGod] Storage state:', {
+    disabledPlatforms: disabledPlatforms ?? '(not set)',
+    disclaimerAccepted: r.disclaimerAccepted,
+    hasResume: Boolean(r.resumeText && (r.resumeText as string).length > 20),
+  });
+
+  if (!r.disclaimerAccepted) {
+    console.log('[JobGod] Disclaimer not accepted, exiting.');
+    return;
+  }
+
+  // 检测平台
   const adapter = detectPlatform();
   if (!adapter) {
     console.log('[JobGod] Unsupported platform, exiting.');
     return;
   }
 
+  // 检查平台是否被禁用（如果 disabledPlatforms 不存在，则所有平台都启用）
+  const platformId = getPlatformId(adapter);
+  const disabled = disabledPlatforms && Array.isArray(disabledPlatforms) && platformId && disabledPlatforms.includes(platformId);
+  if (disabled) {
+    console.log('[JobGod] Platform disabled:', platformId);
+    return;
+  }
+
+  // 确保 global style 在 start 之前被注入
   ensureGlobalStyle();
 
   if (adapter.isDetailPage()) {
     console.log('[JobGod] Detected job detail page on', adapter.name);
     mountDetailBlock(adapter);
     listObs.observe(document.documentElement, { childList: true, subtree: true });
-  } else {
+  } else if (adapter.name === 'BOSS直聘') {
     console.log('[JobGod] Detected list page on', adapter.name);
     scanList(adapter);
     listObs.observe(document.documentElement, { childList: true, subtree: true });
-  }
-}
-
-// ==================== 初始化 ====================
-
-chrome.storage.local.get(['disabledOnSite', 'disclaimerAccepted', 'resumeText'], (r) => {
-  console.log('[JobGod] Storage state:', {
-    disabledOnSite: r.disabledOnSite,
-    disclaimerAccepted: r.disclaimerAccepted,
-    hasResume: Boolean(r.resumeText && (r.resumeText as string).length > 20),
-  });
-
-  if (r.disabledOnSite) {
-    console.log('[JobGod] Disabled on site, exiting.');
-    return;
-  }
-  if (!r.disclaimerAccepted) {
-    console.log('[JobGod] Disclaimer not accepted, exiting.');
-    return;
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, { once: true });
-  } else {
-    start();
   }
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (changes.disabledOnSite || changes.disclaimerAccepted) {
+  if (changes.disabledPlatforms || changes.disclaimerAccepted) {
     location.reload();
   }
 });

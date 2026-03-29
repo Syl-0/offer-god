@@ -1,18 +1,18 @@
 /**
  * 智联招聘平台适配器
  * 支持 zhaopin.com 域名
- *
- * TODO: 需要填充实际的选择器
  */
 
 import type { PlatformAdapter } from './types';
 import type { JobContext } from '../types/analysis';
 
-// ==================== 选择器配置（需要填充） ====================
+// ==================== 选择器配置 ====================
 
 const DETAIL_TITLE_SELECTORS = [
   '.job-info h1',
   '.summaryplane__title',
+  '.job-summary__title',
+  'h1.job-name',
   'h1',
 ];
 
@@ -20,29 +20,34 @@ const DETAIL_COMPANY_SELECTORS = [
   '.company-info a',
   '.summaryplane__company',
   '.company-name',
+  '.company__name',
 ];
 
 const DETAIL_SALARY_SELECTORS = [
   '.job-info .salary',
   '.summaryplane__salary',
   '.itemwarn',
+  '[class*="salary"]',
 ];
 
 const DETAIL_JD_SELECTORS = [
   '.job-description',
   '.describtion__detail-content',
   '.job-detail',
+  '.job-content',
 ];
 
 const DETAIL_COMPANY_INFO_SELECTORS = [
   '.company-box',
   '.company__base-detail',
+  '.company-info',
 ];
 
 const DETAIL_MOUNT_HOSTS = [
   '.job-info',
   '.summaryplane',
   '.job__summary',
+  '.job-header',
 ];
 
 const LIST_ANCHOR_SELECTOR = 'a[href*="/jobdetail/"]';
@@ -96,10 +101,34 @@ function extractFromDetail(): JobContext {
 }
 
 function findDetailMountHost(): HTMLElement | null {
+  // 首先尝试精确选择器
   for (const sel of DETAIL_MOUNT_HOSTS) {
     const el = document.querySelector(sel);
-    if (el instanceof HTMLElement) return el;
+    if (el instanceof HTMLElement) {
+      return el;
+    }
   }
+
+  // 回退：查找包含职位标题的容器
+  for (const sel of DETAIL_TITLE_SELECTORS) {
+    const titleEl = document.querySelector(sel);
+    if (titleEl) {
+      // 向上查找合适的挂载点
+      let parent = titleEl.parentElement;
+      for (let i = 0; i < 5 && parent; i++) {
+        if (parent.classList.contains('job-info') ||
+            parent.classList.contains('summaryplane') ||
+            parent.classList.contains('job__summary') ||
+            parent.tagName === 'HEADER') {
+          return parent;
+        }
+        parent = parent.parentElement;
+      }
+      // 找不到合适容器，挂载在标题后面
+      return titleEl as HTMLElement;
+    }
+  }
+
   return null;
 }
 
@@ -112,6 +141,8 @@ function findJobAnchors(root: ParentNode = document): HTMLAnchorElement[] {
 
   for (const a of list) {
     const href = a.href.split('?')[0] ?? a.href;
+    // 确保是有效的职位详情链接
+    if (!href.includes('/jobdetail/')) continue;
     if (seen.has(href)) continue;
     seen.add(href);
     out.push(a);
@@ -123,7 +154,13 @@ function findJobAnchors(root: ParentNode = document): HTMLAnchorElement[] {
 function resolveCardRoot(anchor: HTMLAnchorElement): HTMLElement {
   let el: HTMLElement | null = anchor;
   for (let i = 0; i < 8 && el; i++) {
-    if (el.classList.contains('job-item') || el.classList.contains('positionlist__item')) return el;
+    // 智联招聘常见的卡片容器类名
+    if (el.classList.contains('job-item') ||
+        el.classList.contains('positionlist__item') ||
+        el.classList.contains('job-card') ||
+        el.hasAttribute('data-job-id')) {
+      return el;
+    }
     el = el.parentElement;
   }
   return anchor.parentElement ?? anchor;

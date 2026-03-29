@@ -115,25 +115,40 @@
 }
 
 .jg-dual-row {
-  display: inline-flex;
-  align-items: center;
+  display: inline-flex !important;
+  align-items: center !important;
   flex-wrap: wrap;
   gap: 6px;
   margin-left: 6px;
   vertical-align: middle;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
-/* 列表卡片右下角定位 */
+/* 详情页按钮行 - 只调整间距，不加背景 */
+.jg-dual-row:not(.jg-list-card-actions) {
+  display: flex !important;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  width: fit-content;
+}
+
+/* 猎聘专用挂载点 */
+.jg-liepin-wrapper,
+.jg-liepin-mount {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* 列表卡片右下角定位 - 不加背景 */
 .jg-list-card-actions {
   position: absolute !important;
   right: 8px;
   bottom: 8px;
   z-index: 10;
   margin: 0;
-  background: rgba(255, 255, 255, 0.95);
   padding: 4px 6px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .jg-tag {

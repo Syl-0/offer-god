@@ -2,6 +2,7 @@ import './options.css';
 import { extractTextFromPdfArrayBuffer, setPdfWorkerUrl, summarizeResume } from '../lib/pdfResume';
 import { djb2Hash } from '../lib/hash';
 import { LLM_PRESETS, getPresetByBaseUrl } from '../lib/llmPresets';
+import { PLATFORM_INFO, type PlatformId } from '../selectors';
 import type { LlmConfig, UserInsights, UserProfile } from '../types/analysis';
 
 const app = document.getElementById('app')!;
@@ -23,7 +24,7 @@ function load(): Promise<Partial<UserProfile>> {
         'birth',
         'weights',
         'llm',
-        'disabledOnSite',
+        'disabledPlatforms',
         'disclaimerAccepted',
       ],
       (r) => resolve(r as Partial<UserProfile>),
@@ -70,6 +71,20 @@ async function render(): Promise<void> {
     const weights = s.weights ?? { science: 0.5, metaphysics: 0.5 };
     const llm = s.llm ?? { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' };
     const birth = s.birth;
+    const disabledPlatforms = s.disabledPlatforms ?? [];
+
+    // 构建平台开关 HTML
+    const platformSwitchesHtml = PLATFORM_INFO.map(p => {
+      const isDisabled = disabledPlatforms.includes(p.id);
+      const listPageNote = p.supportsListPage ? '（支持列表页）' : '';
+      return `
+        <label class="platform-switch">
+          <input type="checkbox" data-platform="${p.id}" ${!isDisabled ? 'checked' : ''} />
+          <span class="platform-name">${p.name}</span>
+          <span class="platform-domain">${p.domain}${listPageNote}</span>
+        </label>
+      `;
+    }).join('');
 
     // 匹配当前 LLM 预设
     const currentPreset = getPresetByBaseUrl(llm.baseUrl) || LLM_PRESETS[LLM_PRESETS.length - 1]; // 默认自定义
@@ -97,15 +112,46 @@ async function render(): Promise<void> {
       // 软性特质
       const softTraitsHtml = (ui.softTraits || []).map(t => `<span class="trait-tag trait-soft">${escapeHtml(t)}</span>`).join(' ');
 
-      // 玄学画像按换行分割，保留完整段落
-      const baziParagraphs = ui.baziCareerLine.split('\n').filter(l => l.trim()).map(l => {
-        const line = l.trim();
-        // 标题行（如【排盘信息】）用高亮样式
-        if (line.startsWith('【') && line.endsWith('】')) {
-          return `<h4 class="bazi-title">${escapeHtml(line)}</h4>`;
+      // 玄学画像格式化：提取【标题】并分段显示
+      const formatBaziContent = (text: string): string => {
+        // 如果文本为空，返回空
+        if (!text || !text.trim()) return '';
+
+        // 用正则提取【xxx】标题及其后续内容
+        // 模式：【标题】内容（直到下一个【或结尾）
+        const sections: { title: string; content: string }[] = [];
+
+        // 先尝试按【xxx】分割
+        const pattern = /【([^】]+)】([^【]*)/g;
+        let match;
+
+        while ((match = pattern.exec(text)) !== null) {
+          const title = match[1].trim();
+          const content = match[2].trim();
+          if (title) {
+            sections.push({ title, content });
+          }
         }
-        return `<p>${escapeHtml(line)}</p>`;
-      }).join('');
+
+        // 如果没有匹配到【xxx】格式，返回原始文本（处理换行）
+        if (sections.length === 0) {
+          return text.split('\n').filter(l => l.trim())
+            .map(l => `<p>${escapeHtml(l.trim())}</p>`)
+            .join('');
+        }
+
+        // 构建格式化 HTML
+        return sections.map(s => {
+          const contentHtml = s.content
+            ? s.content.split(/[。！？\n]/).filter(l => l.trim())
+                .map(l => `<p>${escapeHtml(l.trim())}</p>`)
+                .join('')
+            : '';
+          return `<h4 class="bazi-title">【${escapeHtml(s.title)}】</h4>${contentHtml}`;
+        }).join('');
+      };
+
+      const baziParagraphs = formatBaziContent(ui.baziCareerLine);
 
       profileDisplayHtml = `
         <div class="profile-section">
@@ -138,7 +184,12 @@ async function render(): Promise<void> {
 
       <section>
         <label><input type="checkbox" id="disclaimer" ${s.disclaimerAccepted ? 'checked' : ''} /> 我已阅读并理解上述说明</label>
-        <label><input type="checkbox" id="disabled" ${s.disabledOnSite ? 'checked' : ''} /> 暂停在 zhipin.com 显示标签</label>
+
+        <h3 style="margin-top: 16px; margin-bottom: 8px; font-size: 14px;">平台显示设置</h3>
+        <p class="note" style="margin-bottom: 8px;">取消勾选后将不在对应平台显示分析和建议按钮，更改后即时生效</p>
+        <div class="platform-switches">
+          ${platformSwitchesHtml}
+        </div>
       </section>
 
       <section>
@@ -267,6 +318,23 @@ function setupEventListeners(): void {
     }
   });
 
+  // 平台开关即时生效
+  document.querySelectorAll('.platform-switch input[data-platform]').forEach(checkbox => {
+    checkbox.addEventListener('change', async () => {
+      // 收集当前所有平台状态
+      const disabledPlatforms: string[] = [];
+      document.querySelectorAll('.platform-switch input[data-platform]').forEach(cb => {
+        const cbElement = cb as HTMLInputElement;
+        if (!cbElement.checked) {
+          disabledPlatforms.push(cbElement.dataset.platform!);
+        }
+      });
+
+      // 立即保存
+      await chrome.storage.local.set({ disabledPlatforms });
+    });
+  });
+
   // PDF 上传
   document.getElementById('pdf')?.addEventListener('change', async (ev) => {
     const f = (ev.target as HTMLInputElement).files?.[0];
@@ -295,7 +363,15 @@ function setupEventListeners(): void {
     status.className = 'ok';
 
     const disclaimerAccepted = (document.getElementById('disclaimer') as HTMLInputElement).checked;
-    const disabledOnSite = (document.getElementById('disabled') as HTMLInputElement).checked;
+
+    // 收集禁用的平台列表
+    const disabledPlatforms: string[] = [];
+    document.querySelectorAll('.platform-switch input[data-platform]').forEach(checkbox => {
+      const cb = checkbox as HTMLInputElement;
+      if (!cb.checked) {
+        disabledPlatforms.push(cb.dataset.platform!);
+      }
+    });
 
     // 获取模型名（优先使用自定义输入）
     const modelName = modelInput.value.trim() || modelSelect.value;
@@ -332,7 +408,7 @@ function setupEventListeners(): void {
 
     await chrome.storage.local.set({
       disclaimerAccepted,
-      disabledOnSite,
+      disabledPlatforms,
       birth: birthNext,
       llm: llmNext,
       weights: weightsNext,
